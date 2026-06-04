@@ -104,7 +104,7 @@ plot_hbonds(hbonds, outdir="output", protein="NFKB")
 ```
 **Output:** `HBonds_Count_Time.png` — H-bond count vs time with rolling average
 
-![MD Analysis H-bond](assets/H-bond.png)
+![MD Analysis H-bond](assets/H-Bond.png)
 
 **Note:** This analysis is computationally intensive for large trajectories due to per-frame geometry checks.
 
