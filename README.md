@@ -32,7 +32,3 @@ Under the hood, `simulate.py` loads the config with `load_config`, then hands
 it to `run(cfg)`, which builds the system, runs the MD, and writes the
 trajectory.
 
-
-This reflects the real entry point in `simulate.py` (the `main()` parser takes a required `--config` flag and calls `run(cfg)`) and the actual function names in `analyses.py`.
-
-Want me to add the **Installation** and **Configuration** sections next, or pull the exact function signatures so the API list shows the parameters too?
