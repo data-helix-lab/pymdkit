@@ -1,0 +1,42 @@
+# --- MD simulation outputs (heavy, never commit) ---
+*.dcd
+*.xtc
+*.trr
+*.chk
+*.cpt
+output_*/
+state*.xml
+
+# --- Large structures (keep only small input PDBs in data/input) ---
+*_solvated.pdb
+*_fixed.pdb
+!data/NFKB_complex.pdb
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# --- Environments ---
+.venv/
+venv/
+env/
+.conda/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# --- Logs ---
+*.log
+logs/

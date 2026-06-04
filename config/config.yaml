@@ -1,0 +1,53 @@
+# ============================================================
+# MD Simulation & Analysis configuration
+# All paths are derived from `protein` to keep things consistent.
+# ============================================================
+
+project:
+  protein: "NFKB"          # single source of truth for naming
+  data_dir: "data/"   # where the input PDB lives
+  output_dir: "output_NFKB"
+
+input:
+  pdb_file: "NFKB_complex.pdb"   # relative to data_dir
+
+forcefield:
+  protein: "amber14-all.xml"
+  water: "amber14/tip3p.xml"
+  water_model: "tip3p"
+
+solvation:
+  padding_nm: 1.0
+  ionic_strength_molar: 0.15
+  ph: 7.4
+
+system:
+  nonbonded_cutoff_nm: 1.0
+  hydrogen_mass_amu: 3.0
+  constraints: "HBonds"
+
+ensemble:
+  temperature_K: 310.0
+  pressure_bar: 1.0
+  friction_per_ps: 1.0
+  timestep_ps: 0.004        # 4 fs, enabled by HMR
+
+run:
+  # 50 ns production
+  production_steps: 12500000
+  equilibration_steps: 25000
+  report_interval: 5000       # 20 ps
+  checkpoint_interval: 50000  # 200 ps
+  platform_priority: ["CUDA", "OpenCL", "CPU"]
+  precision: "mixed"
+  random_seed: 42
+
+analysis:
+  dt_ps: 20.0                 # = timestep_ps * report_interval
+  plot_unit: "A"              # "A" (Angstrom) or "nm"
+  dssp_stride: 10
+  fel:
+    bins: 30
+    sigma_smooth: 1.9
+  constants:
+    gas_constant_kJ: 0.008314462618   # R in kJ/mol/K
