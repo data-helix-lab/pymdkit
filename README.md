@@ -112,7 +112,7 @@ plot_hbonds(hbonds, outdir="output", protein="NFKB")
 sasa = compute_sasa(traj, dt_ps=20.0, pl_unit="A")
 plot_sasa(sasa, outdir="output", protein="NFKB")
 ```
-**Output:*
+**Output:**
  `SASA_Time.png`
 
 ---
