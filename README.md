@@ -84,6 +84,9 @@ plot_dssp(dssp, outdir="output", protein="NFKB")
 ```
 **Output:** `DSSP_SecondaryStructure_Fractions.png`
 
+![MD Analysis DSSP](assets/DSSP.png)
+
+
 **Implementation:**
 - Uses `mdtraj.compute_dssp(simplified=True)`
 - Classifies into three states: `H` (helix), `E` (sheet), `C` (coil)
@@ -101,6 +104,8 @@ plot_hbonds(hbonds, outdir="output", protein="NFKB")
 ```
 **Output:** `HBonds_Count_Time.png` — H-bond count vs time with rolling average
 
+![MD Analysis H-bond](assets/H-bond.png)
+
 **Note:** This analysis is computationally intensive for large trajectories due to per-frame geometry checks.
 
 ---
@@ -116,6 +121,8 @@ plot_sasa(sasa, outdir="output", protein="NFKB")
 **Output:**
  `SASA_Time.png`
 
+![MD Analysis SASA](assets/SASA.png)
+
 ---
 
 #### 7. Residue Contact Maps
@@ -128,6 +135,8 @@ plot_contact_map(contacts, outdir="output", protein="NFKB")
 ```
 
 **Output:** `Contact_Map.png`
+
+![MD Analysis Contact_Map](assets/Contact_Map.png)
 
 ---
 
