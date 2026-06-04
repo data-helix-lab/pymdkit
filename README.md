@@ -29,7 +29,7 @@ The analysis module provides eight core analysis functions, each paired with a d
 ```python
 data = compute_rmsd_rmsf_rg(traj, dt_ps=20.0, plot_unit="A")
 plot_rmsd_rmsf_rg(data, outdir="output", protein="NFKB")
-
+```
 **Output:** `MD_Analysis_Summary.png` — three-panel figure (RMSD vs time, RMSF per residue, Rg vs time)
 
 ---
@@ -39,10 +39,10 @@ plot_rmsd_rmsf_rg(data, outdir="output", protein="NFKB")
 - Explained variance quantification
 - PC space trajectory projection
 
-python
+```python
 pca_data = compute_pca(traj, dt_ps=20.0, n_components=2, random_state=0)
 plot_pca_fel(pca_data, outdir="output", protein="NFKB", T_K=310.0)
-
+```
 **Outputs:**
 - `FEL_PCA_Backbone.png` — Free energy landscape in PC1–PC2 space (KDE-based)
 - `PCA_scatter_time.png` — PC trajectory colored by simulation time
@@ -59,13 +59,13 @@ plot_pca_fel(pca_data, outdir="output", protein="NFKB", T_K=310.0)
 - Histogram-based density estimation with Gaussian smoothing
 - Thermodynamic weighting: ΔG = -kB T ln(P)
 
-python
+```python
 rmsd = data["rmsd"]
 rg = data["rg"]
 fel = build_fel_rmsd_rg(rmsd, rg, bins=30, sigma=1.9, T_K=310.0)
 plot_fel_2d(fel, outdir="output", protein="NFKB")
 plot_fel_3d(fel, outdir="output", protein="NFKB")
-
+```
 **Outputs:**
 - `FEL_RMSD_RG_2D.png` — contour map
 - `FEL_RMSD_RG_3D.png` — surface plot
@@ -77,10 +77,10 @@ plot_fel_3d(fel, outdir="output", protein="NFKB")
 - Time evolution of helix, sheet, and coil fractions
 - Configurable stride for computational efficiency
 
-python
+```python
 dssp = compute_dssp(traj, stride=10, dt_ps=20.0)
 plot_dssp(dssp, outdir="output", protein="NFKB")
-
+```
 **Output:** `DSSP_SecondaryStructure_Fractions.png`
 
 **Implementation:**
@@ -94,10 +94,10 @@ plot_dssp(dssp, outdir="output", protein="NFKB")
 - Persistent bond identification with occupancy thresholds
 - Donor–acceptor residue pair tracking
 
-python
+```python
 hbonds = compute_hbonds(traj, dt_ps=20.0, freq_threshold=0.3)
 plot_hbonds(hbonds, outdir="output", protein="NFKB")
-
+```
 **Output:** `HBonds_Count_Time.png` — H-bond count vs time with rolling average
 
 **Note:** This analysis is computationally intensive for large trajectories due to per-frame geometry checks.
@@ -108,10 +108,10 @@ plot_hbonds(hbonds, outdir="output", protein="NFKB")
 - Per-frame SASA calculation using Shrake-Rupley algorithm
 - Unit-aware output (Ångström² or nm²)
 
-python
+```python
 sasa = compute_sasa(traj, dt_ps=20.0, pl_unit="A")
 plot_sasa(sasa, outdir="output", protein="NFKB")
-
+```
 **Output:*
  `SASA_Time.png`
 
