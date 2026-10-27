@@ -184,3 +184,83 @@ The toolkit follows a modular "Compute vs Plot" design:
 Figures are automatically generated with scientific captions including protein name, temperature, and force field metadata.
 
 ---
+
+## Protein–Ligand Interaction Analysis
+
+In addition to the protein-centered analyses described above, `analyses.py` includes an automated **protein–ligand interaction analysis** for simulations with a configured ligand residue. This workflow uses the full trajectory (protein and ligand), aligned on the protein Cα atoms, to assess ligand positional stability, internal conformational changes, residue contacts, and intermolecular hydrogen bonds. The analysis is launched automatically by `run_analysis()` when the configuration contains a `ligand` section.
+
+### Ligand RMSD and Conformational Stability
+
+Two complementary heavy-atom RMSD metrics are evaluated relative to the first analyzed frame:
+
+- **Protein-aligned ligand RMSD:** Ligand displacement measured after aligning the full trajectory on the protein Cα atoms. It reflects ligand movement relative to the protein together with ligand conformational changes.
+- **Internal ligand RMSD:** RMSD calculated after separately superposing the ligand heavy atoms on their reference coordinates. It emphasizes changes in the ligand's internal conformation rather than its overall displacement in the binding site.
+
+Together, these metrics help distinguish movement of the ligand within or away from its initial binding pose from internal conformational rearrangement. RMSD alone does not establish binding affinity or ligand dissociation.
+
+### Protein–Ligand Residue Contacts
+
+For each analyzed frame, the script calculates the distances between ligand heavy atoms and protein heavy atoms. A protein residue is considered in contact when at least one of its heavy atoms is within the configured cutoff of any ligand heavy atom.
+
+- **Default contact cutoff:** `0.4 nm` (4 Å), configurable through `analysis.ligand_contact_cutoff_nm`.
+- **Contact count:** Number of distinct protein residues contacting the ligand in each frame.
+- **Contact occupancy:** Fraction of analyzed frames in which a given protein residue contacts the ligand, ranging from 0 to 1.
+- **Residue ranking:** The 30 residues with the highest contact occupancy are displayed in a horizontal bar chart.
+
+Contact occupancy helps characterize persistent versus transient protein–ligand proximity; it is not a direct measurement of interaction energy.
+
+### Intermolecular Hydrogen Bonds
+
+Candidate hydrogen bonds are identified with MDTraj's Baker–Hubbard method, retaining only interactions across the protein–ligand interface (one partner on the protein and the other on the ligand). The implementation evaluates candidate donor–hydrogen–acceptor triples across the analyzed trajectory using:
+
+- **Hydrogen–acceptor distance:** less than `0.25 nm` (2.5 Å).
+- **Donor–hydrogen–acceptor angle:** greater than `120°`.
+- **H-bond count:** Number of detected protein–ligand hydrogen bonds in each analyzed frame.
+- **H-bond occupancy:** Fraction of analyzed frames in which each detected hydrogen bond meets the geometric criteria.
+
+These values provide geometric evidence of intermolecular hydrogen-bond persistence; they should not be interpreted as direct binding free energies.
+
+### Configuration and Execution
+
+The ligand is identified using `ligand.residue_name` in the YAML configuration. The additional ligand analysis uses the following optional analysis settings:
+
+```yaml
+ligand:
+  residue_name: CGA  # Example only; must match the actual topology residue name
+
+analysis:
+  ligand_stride: 1
+  ligand_contact_cutoff_nm: 0.4
+```
+
+`ligand_stride` controls the frame-sampling interval (default: 1, meaning every trajectory frame). These settings are used alongside the existing simulation and analysis configuration; the snippet is not intended as a complete configuration file.
+
+Run the analysis using the same command described above:
+
+```bash
+python -m src.analyses --config config/config.yaml --traj data/trajectory.dcd --top data/topology.pdb
+```
+
+The topology must include the ligand and match the trajectory. The script verifies the presence of exactly one residue with the configured ligand name before performing this analysis.
+
+### Ligand Analysis Outputs
+
+The following files are automatically saved under `<output_dir>/ligand_analysis/`:
+
+| Output file | Description |
+| --- | --- |
+| `ligand_stability.png` | Three-panel time series of protein-aligned ligand RMSD, internal ligand RMSD, contacting residue count, and protein–ligand hydrogen-bond count (the first panel contains both RMSD curves). |
+| `ligand_contact_occupancy.png` | Top 30 protein residues ranked by fraction of analyzed frames in contact with the ligand. |
+| `timeseries.csv` | Per-frame time, both ligand RMSD metrics, contacting residue counts, and interface hydrogen-bond counts. |
+| `contact_occupancy.csv` | Protein residue identities, contact-occupancy fractions, and distance cutoff. |
+| `hbond_occupancy.csv` | Donor and acceptor identities and their hydrogen-bond occupancy fractions. |
+
+### Example: NLRP3–CGA Molecular Dynamics Analysis
+
+The following composite figure illustrates a 100 ns NLRP3–CGA trajectory analysis, combining protein-centered structural and conformational measures with ligand-focused interaction metrics. It includes protein-aligned and internal ligand RMSD, interfacial contact and hydrogen-bond counts, ranked contact occupancies, backbone RMSD, Cα RMSF, radius of gyration, secondary-structure evolution, solvent-accessible surface area, principal-component free-energy landscape, RMSD–Rg free-energy landscape, and protein residue contact maps.
+
+**Interpretation:** The ligand RMSD curves describe positional and internal stability, whereas contact occupancies and hydrogen-bond counts characterize the persistence of geometric contacts at the protein–ligand interface. Protein structural metrics and projected free-energy landscapes provide complementary descriptions of sampled conformations. The landscapes are relative, distribution-derived free-energy representations, not direct estimates of ligand binding free energy.
+
+![MD Simulation-Based Conformational Analysis of the NLRP3–CGA Interaction](assets/NLRP3-CGA-MD-analysis.png)
+
+*Figure. MD simulation-based conformational and protein–ligand interaction analysis of the NLRP3–CGA complex, including structural stability, contact persistence, secondary-structure dynamics, and projected free-energy landscapes.*
