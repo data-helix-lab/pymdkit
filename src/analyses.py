@@ -22,7 +22,7 @@ Usage
 
 from __future__ import annotations
 
-import os
+import csv
 from pathlib import Path
 from typing import Optional
 
@@ -40,7 +40,6 @@ from src.plotting import (
     apply_style,
 )
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 from mpl_toolkits.mplot3d import Axes3D          # noqa: F401 (registers projection)
 
 
@@ -105,7 +104,9 @@ def compute_rmsd_rmsf_rg(
     )
 
 
-def plot_rmsd_rmsf_rg(data: dict, outdir: str, protein: str) -> str:
+def plot_rmsd_rmsf_rg(
+    data: dict, outdir: str, protein: str, ligand_name: str = "ligand"
+) -> str:
     apply_style()
     fig, axes = plt.subplots(3, 1, figsize=(10, 11), constrained_layout=True)
     ul = data["unit_label"]
@@ -139,7 +140,7 @@ def plot_rmsd_rmsf_rg(data: dict, outdir: str, protein: str) -> str:
     ax.set_title(f"{protein} — Radius of Gyration")
     ax.legend()
 
-    add_caption(fig, f"{protein} | 310 K | AMBER14 + TIP3P")
+    add_caption(fig, f"{protein} | CHARMM36m + CGenFF ({ligand_name}) + CHARMM TIP3P")
     return _savefig(fig, Path(outdir) / "MD_Analysis_Summary.png")
 
 
@@ -649,21 +650,17 @@ def plot_bfactor(data: dict, outdir: str, protein: str) -> str:
 # ============================================================
 
 import argparse
-import yaml
-
-
-def load_config(path: str) -> dict:
-    with open(path) as f:
-        return yaml.safe_load(f)
+from src.simulate import data_path, load_config, output_path
 
 
 def load_trajectory(
     cfg: dict,
     traj_path: Optional[str] = None,
     top_path: Optional[str] = None,
+    return_full: bool = False,
 ) -> md.Trajectory:
-    """Load a trajectory, keep protein atoms only, superpose on frame 0."""
-    out     = Path(cfg["project"]["output_dir"])
+    """Align entire trajectory on protein CA; return protein slice by default."""
+    out     = output_path(cfg)
     protein = cfg["project"]["protein"]
 
     if traj_path is None:
@@ -675,15 +672,122 @@ def load_trajectory(
     print(f"[load] topology   : {top_path}")
 
     traj = md.load(str(traj_path), top=str(top_path))
+    if cfg.get("ligand"):
+        name = cfg["ligand"]["residue_name"]
+        residues = [r for r in traj.topology.residues if r.name == name]
+        if len(residues) != 1:
+            raise ValueError(f"Expected one {name} in MD topology, found {len(residues)}")
+        if traj.unitcell_vectors is not None:
+            traj.image_molecules(inplace=True)
 
-    # protein-only + superpose on first frame using Cα
     protein_idx = traj.topology.select("protein")
-    traj = traj.atom_slice(protein_idx)
     ca = traj.topology.select("name CA")
+    if not len(ca):
+        raise ValueError("No protein CA atoms found")
     traj.superpose(traj, 0, atom_indices=ca)
+    protein_traj = traj.atom_slice(protein_idx)
+    print(f"[load] {traj.n_frames} frames | {protein_traj.n_atoms} protein atoms"
+          f" | {traj.n_atoms - protein_traj.n_atoms} other atoms")
+    return (protein_traj, traj) if return_full else protein_traj
 
-    print(f"[load] {traj.n_frames} frames | {traj.n_atoms} protein atoms")
-    return traj
+
+def analyse_ligand(full: md.Trajectory, cfg: dict, outdir: str,
+                   dt_ps: float, plot_unit: str) -> None:
+    """Protein-aligned bound-ligand displacement, H bonds and residue contacts."""
+    from scipy.spatial.distance import cdist
+
+    name = cfg["ligand"]["residue_name"]
+    residue = next(r for r in full.topology.residues if r.name == name)
+    ligand_atoms = np.array([a.index for a in residue.atoms if a.element.symbol != "H"])
+    protein_atoms = np.array([a.index for a in full.topology.atoms
+                              if a.residue.is_protein and a.element.symbol != "H"])
+    if not len(ligand_atoms) or not len(protein_atoms):
+        raise ValueError("Ligand/protein heavy atoms missing from MD trajectory")
+    scale, unit_label = _unit_scale(plot_unit)
+    stride = cfg.get("analysis", {}).get("ligand_stride", 1)
+    if not isinstance(stride, int) or stride < 1:
+        raise ValueError("analysis.ligand_stride must be a positive integer")
+    sub = full[::stride]
+    t = np.arange(sub.n_frames) * dt_ps * stride / 1000.0
+    # Full trajectory was aligned on protein CA in load_trajectory.
+    displacement = np.sqrt(np.mean(np.sum(
+        (sub.xyz[:, ligand_atoms, :] - sub.xyz[0, ligand_atoms, :]) ** 2,
+        axis=2), axis=1)) * scale
+    ligand_only = sub.atom_slice(ligand_atoms).superpose(
+        sub.atom_slice(ligand_atoms), 0)
+    internal = md.rmsd(ligand_only, ligand_only, 0) * scale
+
+    cutoff = cfg.get("analysis", {}).get("ligand_contact_cutoff_nm", 0.4)
+    groups = {}
+    for j, atom_index in enumerate(protein_atoms):
+        r = full.topology.atom(int(atom_index)).residue
+        groups.setdefault(r, []).append(j)
+    occupancy = {r: 0 for r in groups}
+    counts = np.zeros(sub.n_frames, dtype=int)
+    for i, frame in enumerate(sub.xyz):
+        d = cdist(frame[ligand_atoms], frame[protein_atoms])
+        for r, columns in groups.items():
+            if np.min(d[:, columns]) < cutoff:
+                occupancy[r] += 1
+                counts[i] += 1
+
+    # Baker-Hubbard returns candidate donor-H-acceptor triples; explicitly
+    # retain only cross-interface bonds and calculate per-frame occupancy.
+    # Include protein hydrogens for donor-H topology.
+    subset = np.concatenate([full.topology.select("protein"),
+                             np.array([a.index for a in residue.atoms])])
+    hbtraj = sub.atom_slice(subset)
+    hbonds = md.baker_hubbard(hbtraj, freq=0.0, periodic=False,
+                              distance_cutoff=0.25, angle_cutoff=120)
+    hrecords = []
+    hcounts = np.zeros(sub.n_frames, dtype=int)
+    for donor, hydrogen, acceptor in hbonds:
+        d_atom = hbtraj.topology.atom(int(donor))
+        a_atom = hbtraj.topology.atom(int(acceptor))
+        if (d_atom.residue.name == name) == (a_atom.residue.name == name):
+            continue
+        dh = md.compute_distances(hbtraj, [[hydrogen, acceptor]], periodic=False)[:, 0]
+        angle = md.compute_angles(hbtraj, [[donor, hydrogen, acceptor]],
+                                  periodic=False)[:, 0] * 180 / np.pi
+        present = (dh < 0.25) & (angle > 120)
+        hcounts += present
+        hrecords.append((str(d_atom), str(a_atom), float(present.mean())))
+
+    dest = Path(outdir) / "ligand_analysis"
+    dest.mkdir(parents=True, exist_ok=True)
+    with (dest / "timeseries.csv").open("w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["time_ns", f"protein_aligned_ligand_rmsd_{unit_label}",
+                    f"ligand_internal_rmsd_{unit_label}",
+                    "contacted_residues", "protein_ligand_hbonds"])
+        w.writerows(zip(t, displacement, internal, counts, hcounts))
+    with (dest / "contact_occupancy.csv").open("w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["protein_residue", "occupancy_fraction", "cutoff_nm"])
+        for r, n in sorted(occupancy.items(), key=lambda x: -x[1]):
+            w.writerow([f"{r.chain.index}:{r.name}{r.resSeq}", n / sub.n_frames, cutoff])
+    with (dest / "hbond_occupancy.csv").open("w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["donor", "acceptor", "occupancy_fraction"])
+        w.writerows(sorted(hrecords, key=lambda x: -x[2]))
+    fig, axes = plt.subplots(3, 1, figsize=(10, 10), constrained_layout=True)
+    axes[0].plot(t, displacement, label="Protein-aligned ligand RMSD")
+    axes[0].plot(t, internal, label="Internal ligand RMSD")
+    axes[0].set_ylabel(f"RMSD ({unit_label})")
+    axes[0].legend()
+    axes[1].plot(t, counts)
+    axes[1].set_ylabel("Contacted protein residues")
+    axes[2].plot(t, hcounts)
+    axes[2].set_ylabel("Interface H-bonds")
+    axes[2].set_xlabel("Time (ns)")
+    _savefig(fig, dest / "ligand_stability.png")
+    top = sorted(occupancy.items(), key=lambda x: -x[1])[:30]
+    fig, ax = plt.subplots(figsize=(10, max(4, len(top) * .28)))
+    ax.barh([f"{r.chain.index}:{r.name}{r.resSeq}" for r, _ in top][::-1],
+            [n / sub.n_frames for _, n in top][::-1])
+    ax.set_xlabel(f"Fraction of frames within {cutoff * 10:g} Å")
+    ax.set_xlim(0, 1)
+    _savefig(fig, dest / "ligand_contact_occupancy.png")
 
 
 def run_analysis(
@@ -695,16 +799,20 @@ def run_analysis(
 
     a         = cfg["analysis"]
     protein   = cfg["project"]["protein"]
-    outdir    = cfg["project"]["output_dir"]
+    outdir    = str(output_path(cfg))
     T_K       = cfg["ensemble"]["temperature_K"]
     dt_ps     = a["dt_ps"]
     plot_unit = a["plot_unit"]
 
-    traj = load_trajectory(cfg, traj_path, top_path)
+    if cfg.get("ligand"):
+        traj, full = load_trajectory(cfg, traj_path, top_path, return_full=True)
+        analyse_ligand(full, cfg, outdir, dt_ps, plot_unit)
+    else:
+        traj = load_trajectory(cfg, traj_path, top_path)
 
     print("\n[1/8] RMSD / RMSF / Rg …")
     rrr = compute_rmsd_rmsf_rg(traj, dt_ps=dt_ps, plot_unit=plot_unit)
-    plot_rmsd_rmsf_rg(rrr, outdir, protein)
+    plot_rmsd_rmsf_rg(rrr, outdir, protein, cfg["ligand"]["residue_name"])
 
     print("\n[2/8] PCA + FEL …")
     pca = compute_pca(traj, dt_ps=dt_ps, plot_unit=plot_unit)
@@ -740,7 +848,7 @@ def run_analysis(
     plot_contact_map(cm, outdir, protein)
 
     print("\n[8/8] B-factor comparison …")
-    pdb_path = Path(cfg["project"]["data_dir"]) / cfg["input"]["pdb_file"]
+    pdb_path = data_path(cfg, cfg["input"]["pdb_file"])
     try:
         bf = compute_bfactor_comparison(traj, rrr["rmsf"], str(pdb_path))
         plot_bfactor(bf, outdir, protein)
