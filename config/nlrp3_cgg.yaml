@@ -1,0 +1,79 @@
+project:
+  root_dir: ..
+  protein: NLRP3_CGG
+  data_dir: input/charmm-gui
+  output_dir: outputs/nlrp3_cgg_200ns
+
+input:
+  # Use this CHARMM-GUI pair. Do not replace it with the old docked PDB.
+  psf_file: step1_pdbreader.psf
+  pdb_file: step1_pdbreader.pdb
+
+ligand:
+  # For a new ligand, update this block and provide its matching RTF/PRM/XML files.
+  residue_name: CGG
+  expected_residue_count: 1
+  expected_atom_count: 42
+  expected_heavy_atom_count: 25
+  expected_charge_e: -1
+  max_parameter_penalty: 10.0
+  method: CGenFF-4.0
+  rtf_file: cgg/cgg.rtf
+  parameter_file: cgg/cgg.prm
+  ffxml_file: cgg/cgg.xml
+
+forcefield:
+  protein_xml: charmm36_2024.xml
+  water_xml: charmm36_2024/water.xml
+  water_model: tip3p
+
+solvation:
+  # Protonation was already assigned by CHARMM-GUI at this pH.
+  ph: 7.4
+  padding_nm: 1.0
+  ionic_strength_molar: 0.15
+  positive_ion: Na+
+  negative_ion: Cl-
+  neutralize: true
+  box_shape: dodecahedron
+
+system:
+  nonbonded_cutoff_nm: 1.2
+  switch_distance_nm: 1.0
+  ewald_error_tolerance: 0.0005
+  constraints: HBonds
+  rigid_water: true
+  hydrogen_mass_amu: 4.0
+
+ensemble:
+  temperature_K: 310.0
+  pressure_bar: 1.0
+  friction_per_ps: 1.0
+  timestep_ps: 0.004
+  barostat_interval: 25
+
+run:
+  random_seed: 20260928
+  minimization_tolerance_kj_mol_nm: 10.0
+  minimization_max_iterations: 10000
+  equilibration_steps: 250000       # 1 ns at 4 fs
+  production_steps: 50000000        # 200 ns at 4 fs
+  report_interval: 5000             # one frame every 20 ps
+  checkpoint_interval: 25000
+  platform_priority: [CUDA, OpenCL, CPU]
+  precision: mixed
+  cpu_threads: 0
+
+analysis:
+  # Must equal report_interval * timestep_ps = 20 ps.
+  dt_ps: 20.0
+  plot_unit: A
+  dssp_stride: 10
+  hbond_threshold: 0.30
+  contact_scheme: ca
+  contact_cutoff_nm: 0.8
+  ligand_stride: 1
+  ligand_contact_cutoff_nm: 0.4
+  fel:
+    bins: 30
+    sigma_smooth: 1.9
